@@ -5,6 +5,7 @@ import { useRouter } from 'next/router'
 import { auth, db } from '../../firebaseConfig'
 import { collection, query, where, getDocs, orderBy, doc, deleteDoc, updateDoc } from 'firebase/firestore'
 import withAuth from '../../components/withAuth'
+import Sidebar from '../../components/Sidebar'
 
 const ImageDisplay = ({ url, prompt, onDownload, onDelete }) => {
   const [isHovered, setIsHovered] = useState(false);
@@ -279,6 +280,7 @@ function TextToImage() {
   const [selectedStyle, setSelectedStyle] = useState('No Style');
   const dropdownRef = useRef(null);
   const router = useRouter();
+  const [error, setError] = useState('');
 
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged((user) => {
@@ -322,9 +324,11 @@ function TextToImage() {
     }
   };
 
-  const handleGenerate = async () => {
-    if (!user) return;
+  const handleGenerate = async (e) => {
+    e.preventDefault();
     setIsLoading(true);
+    setError('');
+
     try {
       let finalPrompt = prompt;
       if (selectedStyle !== 'No Style') {
@@ -364,8 +368,9 @@ function TextToImage() {
       } else {
         console.error("Unexpected API response format:", data);
       }
-    } catch (error) {
-      console.error("Error generating image:", error);
+    } catch (err) {
+      console.error('Error generating image:', err);
+      setError('An error occurred while generating the image. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -463,207 +468,129 @@ function TextToImage() {
 
   return (
     <div style={{ 
-      fontFamily: 'Arial, sans-serif', 
+      fontFamily: 'Inter, sans-serif', 
       backgroundColor: '#0f0f1a', 
       color: '#fff',
       minHeight: '100vh',
-      display: 'flex'
+      display: 'flex',
+      position: 'relative'
     }}>
-      {/* Sidebar */}
-      <aside style={{ 
-        width: '250px', 
-        backgroundColor: '#1a1a2e', 
-        padding: '20px',
-        display: 'flex',
-        flexDirection: 'column',
-        borderRight: '1px solid rgba(255, 255, 255, 0.1)'
-      }}>
-        <div style={{ marginBottom: '30px' }}>
-          <Image src="/logo.png" alt="VegaArt Logo" width={150} height={40} />
-        </div>
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <NavLink href="/dashboard">Home</NavLink>
-          <NavLink href="/dashboard/text-to-video">Text to Video</NavLink>
-          <NavLink href="/dashboard/text-to-image">Text to Image</NavLink>
-          <NavLink href="/dashboard/ideate">Ideate</NavLink>
-          <NavLink href="/dashboard/image-remix">Image Remix</NavLink>
-        </nav>
-      </aside>
+      <Sidebar />
 
       {/* Main content */}
-      <main style={{ flex: 1, padding: '30px', display: 'flex' }}>
-        {/* Image generation and previous images section */}
-        <div style={{ flex: 3, marginRight: '20px' }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', marginBottom: '20px' }}>Text to Image</h1>
-          
-          {/* Prompt input and generate button */}
-          <div style={{ display: 'flex', marginBottom: '20px' }}>
-            <input 
-              type="text"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder='Try something like "a tiny astronaut hatching from an egg on the moon"'
-              style={{
-                flex: 1,
-                padding: '10px 15px',
-                fontSize: '16px',
-                backgroundColor: '#2a2a3a',
-                border: 'none',
-                borderRadius: '5px 0 0 5px',
-                color: '#fff'
-              }}
-            />
-            <button 
-              onClick={handleGenerate}
-              disabled={isLoading}
-              style={{
-                padding: '10px 20px',
-                fontSize: '16px',
-                backgroundColor: '#ff6b6b',
-                color: '#fff',
-                border: 'none',
-                borderRadius: '0 5px 5px 0',
-                cursor: 'pointer',
-                opacity: isLoading ? 0.7 : 1
-              }}
-            >
-              {isLoading ? 'Generating...' : 'Generate'}
-            </button>
-          </div>
-
-          {/* Previous images section */}
-          <div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-              {previousImages.map((generation) => (
-                <div key={generation.id} style={{ position: 'relative' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', backgroundColor: '#2a2a3a', borderRadius: '5px 5px 0 0' }}>
-                    <p>{generation.prompt}</p>
-                    <div style={{ position: 'relative' }}>
-                      <button 
-                        onClick={() => setActiveDropdown(activeDropdown === generation.id ? null : generation.id)}
-                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: '20px' }}
-                      >
-                        ⋮
-                      </button>
-                      {activeDropdown === generation.id && (
-                        <div style={{
-                          position: 'absolute',
-                          right: 0,
-                          top: '100%',
-                          backgroundColor: '#1a1a2e',
-                          borderRadius: '5px',
-                          boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-                          zIndex: 10,
-                          minWidth: '120px'
-                        }}>
-                          <button 
-                            onClick={() => handleDownloadAll(generation.imageUrls)}
-                            style={{ 
-                              display: 'block', 
-                              width: '100%', 
-                              padding: '10px', 
-                              textAlign: 'left', 
-                              background: 'none', 
-                              border: 'none', 
-                              color: '#fff', 
-                              cursor: 'pointer',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis'
-                            }}
-                          >
-                            Download All
-                          </button>
-                          <button 
-                            onClick={() => handleDeleteGeneration(generation.id)}
-                            style={{ 
-                              display: 'block', 
-                              width: '100%', 
-                              padding: '10px', 
-                              textAlign: 'left', 
-                              background: 'none', 
-                              border: 'none', 
-                              color: '#ff6b6b', 
-                              cursor: 'pointer'
-                            }}
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', backgroundColor: '#1a1a2e', padding: '10px', borderRadius: '0 0 5px 5px' }}>
-                    {generation.imageUrls && generation.imageUrls.length > 0 ? (
-                      generation.imageUrls.map((url, index) => (
-                        <ImageDisplay 
-                          key={index}
-                          url={url}
-                          prompt={generation.prompt}
-                          onDownload={handleDownload}
-                          onDelete={() => handleDeleteImage(generation.id, url)}
-                        />
-                      ))
-                    ) : (
-                      <p>No images available for this generation</p>
+      <main style={{ flex: 1, padding: '30px', overflow: 'auto', display: 'flex' }}>
+        {/* Left side: Previous images section */}
+        <div style={{ flex: 3, marginRight: '20px', overflow: 'auto' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {previousImages.map((generation) => (
+              <div key={generation.id} style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', backgroundColor: '#2a2a3a', borderRadius: '5px 5px 0 0' }}>
+                  <p style={{ fontSize: '14px', fontWeight: '500' }}>{generation.prompt}</p>
+                  <div style={{ position: 'relative' }}>
+                    <button 
+                      onClick={() => setActiveDropdown(activeDropdown === generation.id ? null : generation.id)}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: '20px' }}
+                    >
+                      ⋮
+                    </button>
+                    {activeDropdown === generation.id && (
+                      <div style={{
+                        position: 'absolute',
+                        right: 0,
+                        top: '100%',
+                        backgroundColor: '#1a1a2e',
+                        borderRadius: '5px',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+                        zIndex: 10,
+                        minWidth: '120px'
+                      }}>
+                        <button 
+                          onClick={() => handleDownloadAll(generation.imageUrls)}
+                          style={{ 
+                            display: 'block', 
+                            width: '100%', 
+                            padding: '10px', 
+                            textAlign: 'left', 
+                            background: 'none', 
+                            border: 'none', 
+                            color: '#fff', 
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}
+                        >
+                          Download All
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteGeneration(generation.id)}
+                          style={{ 
+                            display: 'block', 
+                            width: '100%', 
+                            padding: '10px', 
+                            textAlign: 'left', 
+                            background: 'none', 
+                            border: 'none', 
+                            color: '#ff6b6b', 
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', backgroundColor: '#1a1a2e', padding: '10px', borderRadius: '0 0 5px 5px' }}>
+                  {generation.imageUrls && generation.imageUrls.length > 0 ? (
+                    generation.imageUrls.map((url, index) => (
+                      <ImageDisplay 
+                        key={index}
+                        url={url}
+                        prompt={generation.prompt}
+                        onDownload={handleDownload}
+                        onDelete={() => handleDeleteImage(generation.id, url)}
+                      />
+                    ))
+                  ) : (
+                    <p>No images available for this generation</p>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Settings panel */}
+        {/* Right side: Settings section */}
         <div style={{ flex: 1, backgroundColor: '#1a1a2e', padding: '20px', borderRadius: '10px', height: 'fit-content' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: 'bold', marginBottom: '20px' }}>Settings</h2>
+          <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px', letterSpacing: '-0.3px' }}>Settings</h3>
           
-          {/* Model selection */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '10px' }}>Model</label>
-            <select 
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              style={{ width: '100%', padding: '10px', backgroundColor: '#2a2a3a', color: '#fff', border: 'none', borderRadius: '5px' }}
-            >
-              <option value="flux-schnell">Flux Schnell</option>
-              <option value="flux-dev">Flux Dev</option>
-              <option value="flux-pro">Flux Pro</option>
-            </select>
+          <div style={{ marginBottom: '15px' }}>
+            <label htmlFor="numImages" style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Number of Images</label>
+            <input
+              type="number"
+              id="numImages"
+              value={numImages}
+              onChange={(e) => setNumImages(Number(e.target.value))}
+              min="1"
+              max="4"
+              style={{ width: '100%', padding: '5px', backgroundColor: '#2a2a3a', color: '#fff', border: 'none', borderRadius: '5px', fontSize: '14px', fontWeight: '400' }}
+            />
           </div>
 
-          {/* Style selection */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '10px' }}>Style</label>
-            <select 
-              value={selectedStyle}
-              onChange={(e) => setSelectedStyle(e.target.value)}
-              style={{ width: '100%', padding: '10px', backgroundColor: '#2a2a3a', color: '#fff', border: 'none', borderRadius: '5px' }}
-            >
-              <option>No Style</option>
-              <option>Photorealistic</option>
-              <option>Pixel Art</option>
-              <option>Oil Painting</option>
-              <option>Icon</option>
-              <option>Logo</option>
-              <option>Product Design</option>
-            </select>
-          </div>
-
-          {/* Aspect Ratio */}
-          <div style={{ marginBottom: '20px' }}>
-            <label style={{ display: 'block', marginBottom: '10px' }}>Aspect Ratio</label>
-            <select 
+          <div style={{ marginBottom: '15px' }}>
+            <label htmlFor="aspectRatio" style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Aspect Ratio</label>
+            <select
+              id="aspectRatio"
               value={aspectRatio}
               onChange={(e) => setAspectRatio(e.target.value)}
-              style={{ width: '100%', padding: '10px', backgroundColor: '#2a2a3a', color: '#fff', border: 'none', borderRadius: '5px' }}
+              style={{ width: '100%', padding: '5px', backgroundColor: '#2a2a3a', color: '#fff', border: 'none', borderRadius: '5px', fontSize: '14px', fontWeight: '400' }}
             >
               <option value="1:1">1:1</option>
-              <option value="4:3">4:3</option>
               <option value="16:9">16:9</option>
               <option value="21:9">21:9</option>
-              <option value="3:2">3:2</option>
               <option value="2:3">2:3</option>
+              <option value="3:2">3:2</option>
               <option value="4:5">4:5</option>
               <option value="5:4">5:4</option>
               <option value="9:16">9:16</option>
@@ -671,31 +598,101 @@ function TextToImage() {
             </select>
           </div>
 
-          {/* Number of Images */}
-          <div>
-            <label style={{ display: 'block', marginBottom: '10px' }}>Number of Images</label>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              {[1, 2, 3, 4].map(num => (
-                <button 
-                  key={num} 
-                  onClick={() => setNumImages(num)}
-                  style={{ 
-                    flex: 1, 
-                    padding: '10px', 
-                    backgroundColor: numImages === num ? '#ff6b6b' : '#2a2a3a', 
-                    color: '#fff', 
-                    border: 'none', 
-                    borderRadius: '5px', 
-                    cursor: 'pointer' 
-                  }}
-                >
-                  {num}
-                </button>
-              ))}
-            </div>
+          <div style={{ marginBottom: '15px' }}>
+            <label htmlFor="model" style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Model</label>
+            <select
+              id="model"
+              value={selectedModel}
+              onChange={(e) => setSelectedModel(e.target.value)}
+              style={{ width: '100%', padding: '5px', backgroundColor: '#2a2a3a', color: '#fff', border: 'none', borderRadius: '5px', fontSize: '14px', fontWeight: '400' }}
+            >
+              <option value="flux-schnell">Flux Schnell</option>
+              <option value="flux-dev">Flux Dev</option>
+              <option value="flux-pro">Flux Pro</option>
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '15px' }}>
+            <label htmlFor="style" style={{ display: 'block', marginBottom: '5px', fontSize: '14px', fontWeight: '500' }}>Style</label>
+            <select
+              id="style"
+              value={selectedStyle}
+              onChange={(e) => setSelectedStyle(e.target.value)}
+              style={{ width: '100%', padding: '5px', backgroundColor: '#2a2a3a', color: '#fff', border: 'none', borderRadius: '5px', fontSize: '14px', fontWeight: '400' }}
+            >
+              <option value="No Style">No Style</option>
+              <option value="Anime">Anime</option>
+              <option value="Cinematic">Cinematic</option>
+              <option value="Digital Art">Digital Art</option>
+              <option value="Fantasy Art">Fantasy Art</option>
+              <option value="Icon">Texture</option>
+              <option value="Line Art">Line Art</option>
+              <option value="Logo">Texture</option>
+              <option value="Neon Punk">Neon Punk</option>
+              <option value="Photographic">Photographic</option>
+              <option value="Pixel Art">Pixel Art</option>
+              <option value="Texture">Texture</option>
+            </select>
           </div>
         </div>
       </main>
+
+      {/* Floating prompt input box */}
+      <div style={{
+        position: 'fixed',
+        bottom: '32px',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: '100%',
+        maxWidth: '42rem',
+        padding: '0 16px'
+      }}>
+        <div style={{ backgroundColor: '#ffffff', padding: '24px', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' }}>
+          <form onSubmit={handleGenerate} style={{ marginBottom: '1px' }}>
+            <div style={{ marginBottom: '16px' }}>
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px',
+                  backgroundColor: '#f3f4f6',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '5px',
+                  color: '#111827',
+                  resize: 'vertical',
+                  minHeight: '100px',
+                  fontSize: '14px',
+                  fontWeight: '400',
+                  lineHeight: '1.5'
+                }}
+                placeholder="Try something like 'a tiny astronaut hatching from an egg on the moon'"
+                required
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-start', width: 'fit-content' }}>
+              <button
+                type="submit"
+                style={{
+                  padding: '4px 16px',
+                  backgroundColor: prompt.trim() === '' || isLoading ? '#e2e8f0' : '#8b5cf6',
+                  color: prompt.trim() === '' || isLoading ? '#a0aec0' : '#ffffff',
+                  border: 'none',
+                  borderRadius: '5px',
+                  cursor: prompt.trim() === '' || isLoading ? 'not-allowed' : 'pointer',
+                  transition: 'background-color 0.2s',
+                  fontSize: '14px',
+                  fontWeight: '500'
+                }}
+                disabled={prompt.trim() === '' || isLoading}
+              >
+                {isLoading ? 'Generating...' : 'Generate Image'}
+              </button>
+            </div>
+          </form>
+          {error && <p style={{ color: '#ef4444', marginBottom: '16px', fontSize: '14px', fontWeight: '500' }}>{error}</p>}
+        </div>
+      </div>
     </div>
   )
 }
