@@ -300,6 +300,7 @@ function TextToImage() {
   }, [previousImages]);
 
   const fetchPreviousImages = async (userId) => {
+    console.log("Fetching previous images for user:", userId);
     try {
       console.log("Fetching previous images for user:", userId);
       const imagesRef = collection(db, 'users', userId, 'images');
