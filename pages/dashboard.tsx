@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useRouter } from 'next/router'
@@ -23,12 +23,14 @@ interface NavLinkProps {
 }
 
 function Dashboard() {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const router = useRouter();
   const [recentCreations, setRecentCreations] = useState<Creation[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [hoveredCreation, setHoveredCreation] = useState<string | null>(null);
   const [selectedCreation, setSelectedCreation] = useState<Creation | null>(null);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const fetchRecentCreations = async () => {
@@ -88,6 +90,28 @@ function Dashboard() {
     fetchRecentCreations();
   }, [user]);
 
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(event.target as Node)) {
+        setShowProfileMenu(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.push('/');
+    } catch (error) {
+      console.error('Failed to log out', error);
+    }
+  };
+
   const NavLink: React.FC<NavLinkProps> = ({ href, children, icon }) => {
     const isActive = router.pathname === href;
     return (
@@ -113,17 +137,32 @@ function Dashboard() {
         <main className="p-8">
           <header className="mb-8 flex justify-between items-center">
             <h1 className="text-3xl font-bold">Explore AI Tools</h1>
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 relative" ref={profileMenuRef}>
               <span className="text-lg">{user?.displayName}</span>
               {user?.photoURL && (
-                <Image 
-                  src={user.photoURL} 
-                  alt={user.displayName || 'User'} 
-                  width={40} 
-                  height={40} 
-                  className="rounded-full" 
-                  unoptimized
-                />
+                <div 
+                  className="cursor-pointer"
+                  onClick={() => setShowProfileMenu(!showProfileMenu)}
+                >
+                  <Image 
+                    src={user.photoURL} 
+                    alt={user.displayName || 'User'} 
+                    width={40} 
+                    height={40} 
+                    className="rounded-full" 
+                    unoptimized
+                  />
+                </div>
+              )}
+              {showProfileMenu && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg py-1 z-10 top-full">
+                  <button
+                    onClick={handleLogout}
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                  >
+                    Log out
+                  </button>
+                </div>
               )}
             </div>
           </header>

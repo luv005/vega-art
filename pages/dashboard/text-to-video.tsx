@@ -6,12 +6,20 @@ import { collection, query, orderBy, limit, getDocs, where, deleteDoc, doc } fro
 import Link from 'next/link';
 import Sidebar from '../../components/Sidebar';
 
+interface Video {
+    id: string;
+    prompt: string;
+    status: string;
+    videoUrl?: string;
+    taskId: string;
+}
+
 function TextToVideo() {
     const [prompt, setPrompt] = useState('');
     const [videoUrl, setVideoUrl] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
-    const [previousVideos, setPreviousVideos] = useState([]);
+    const [previousVideos, setPreviousVideos] = useState<Video[]>([]);
     const [currentTaskStatus, setCurrentTaskStatus] = useState('');
     const { user } = useAuth();
     const [activeDropdown, setActiveDropdown] = useState(null);
@@ -34,20 +42,67 @@ function TextToVideo() {
             const videosRef = collection(db, 'users', user.uid, 'videoTasks');
             const q = query(
                 videosRef,
-                where('status', '==', 'Success'),
+                where('status', '==', 'Success'),  // Only fetch videos with 'Success' status
                 orderBy('createdAt', 'desc'),
                 limit(15)
             );
             const querySnapshot = await getDocs(q);
             const videos = querySnapshot.docs.map(doc => {
                 const data = doc.data();
-                return { id: doc.id, ...data };
+                return { id: doc.id, ...data } as Video;
             });
             console.log("Fetched successful videos:", videos);
             setPreviousVideos(videos);
+
+            // Check status of processing videos
+            const processingVideosRef = query(
+                videosRef,
+                where('status', '==', 'Processing')
+            );
+            const processingSnapshot = await getDocs(processingVideosRef);
+            const processingVideos = processingSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Video));
+            if (processingVideos.length > 0) {
+                checkProcessingVideos(processingVideos);
+            }
         } catch (error) {
             console.error('Error fetching previous videos:', error);
             setError('Failed to fetch previous videos. Please try refreshing the page.');
+        }
+    };
+
+    const checkProcessingVideos = async (processingVideos) => {
+        for (const video of processingVideos) {
+            try {
+                const response = await fetch('/api/check-video-status', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        taskId: video.taskId,
+                        userId: user.uid,
+                        videoId: video.id
+                    }),
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Failed to check video status: ${response.status}. Error: ${errorText}`);
+                }
+
+                const data = await response.json();
+                console.log("Video status check response:", data);
+                if (data.status === 'Success') {
+                    // Update the video status in the state
+                    setPreviousVideos(prevVideos => 
+                        prevVideos.map(v => 
+                            v.id === video.id ? { ...v, status: 'Success', videoUrl: data.videoUrl } : v
+                        )
+                    );
+                }
+            } catch (error) {
+                console.error('Error checking video status:', error);
+            }
         }
     };
 
@@ -150,7 +205,7 @@ function TextToVideo() {
                     {/* Previous videos section */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-24">
                         {previousVideos.length === 0 ? (
-                            <p className="text-gray-400" style={{ fontSize: '16px', fontWeight: '400' }}>No previous videos found.</p>
+                            <p className="text-gray-400" style={{ fontSize: '16px', fontWeight: '400' }}>No completed videos found.</p>
                         ) : (
                             previousVideos.map((video) => (
                                 <div key={video.id} className="bg-gray-800 shadow-md rounded-lg p-4 relative">
@@ -187,8 +242,13 @@ function TextToVideo() {
                                         fontWeight: '500',
                                         overflow: 'hidden', 
                                         textOverflow: 'ellipsis', 
-                                        whiteSpace: 'nowrap',
-                                        marginBottom: '8px'
+                                        display: '-webkit-box',
+                                        WebkitLineClamp: 2,
+                                        WebkitBoxOrient: 'vertical',
+                                        marginBottom: '8px',
+                                        lineHeight: '1.3',
+                                        minHeight: '2.6em', // This ensures two lines of text
+                                        wordBreak: 'break-word' // This allows long words to break and wrap
                                     }}>
                                         {video.prompt}
                                     </p>

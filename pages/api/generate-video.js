@@ -2,6 +2,7 @@ import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
 import fetch from 'node-fetch';
+import { queryVideoGeneration } from '../../utils/minimax';
 
 if (!getApps().length) {
   try {
@@ -24,31 +25,11 @@ const bucket = getStorage().bucket();
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function queryVideoGeneration(taskId) {
-  const url = `https://api.minimax.chat/v1/query/video_generation?task_id=${taskId}`;
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${process.env.MINIMAXI_API_KEY}`
-      }
-    });
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    console.log("Raw API response:", JSON.stringify(data)); // Add this line
-    return data;
-  } catch (error) {
-    console.error("Error querying video generation status:", error);
-    return null;
-  }
-}
-
 async function fetchVideoResult(fileId) {
   const url = `https://api.minimax.chat/v1/files/retrieve?file_id=${fileId}`;
   const response = await fetch(url, {
     headers: {
-      'Authorization': `Bearer ${process.env.MINIMAXI_API_KEY}`
+      'Authorization': `Bearer ${process.env.MINIMAX_API_KEY}`
     }
   });
   const data = await response.json();
@@ -77,7 +58,7 @@ export default async function handler(req, res) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.MINIMAXI_API_KEY}`
+                'Authorization': `Bearer ${process.env.MINIMAX_API_KEY}`
             },
             body: JSON.stringify({
                 model: "video-01", 
@@ -116,12 +97,12 @@ export default async function handler(req, res) {
             console.log("Status data:", JSON.stringify(statusData)); // Modify this line
 
             if (statusData && statusData.status) {
-                status = statusData.status;
+                status = statusData.base_resp.status_msg;
                 
                 // Update task status in Firestore only if status is defined
                 await taskRef.update({ status });
 
-                if (status === 'Success') {
+                if (status === 'success') {
                     fileId = statusData.file_id;
                 }
                 retryCount = 0; // Reset retry count on successful status update

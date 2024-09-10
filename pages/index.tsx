@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { auth, db } from '../firebaseConfig'
@@ -6,6 +6,121 @@ import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth'
 import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
 import { useRouter } from 'next/router'
 import { useAuth } from '../components/AuthProvider';
+import React from 'react';
+
+// Add this new component for the logo
+const Logo = () => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+    <svg
+      width="40"
+      height="40"
+      viewBox="0 0 24 24"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M12 2L21.39 6.64V17.36L12 22L2.61 17.36V6.64L12 2Z"
+        fill="white"
+        stroke="black"
+        strokeWidth="1"
+      />
+      <path
+        d="M16.5 8L12 18L7.5 8H16.5Z"
+        fill="black"
+      />
+    </svg>
+    <span style={{ fontSize: '24px', fontWeight: 'bold', color: 'white' }}>Vega Art</span>
+  </div>
+);
+
+// Add this new component for the animated background
+const AnimatedBackground = () => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    const drawBackground = () => {
+      if (!ctx) return;
+
+      // Create a dark, slightly transparent gradient
+      const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+      gradient.addColorStop(0, 'rgba(10, 10, 20, 0.8)');
+      gradient.addColorStop(1, 'rgba(20, 20, 40, 0.8)');
+
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Add some subtle, moving particles
+      const particles = [];
+      for (let i = 0; i < 50; i++) {
+        particles.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          radius: Math.random() * 1.5,
+          speed: Math.random() * 0.5 + 0.1
+        });
+      }
+
+      function animateParticles() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        particles.forEach(particle => {
+          ctx.beginPath();
+          ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.fill();
+
+          particle.y -= particle.speed;
+          if (particle.y < 0) {
+            particle.y = canvas.height;
+          }
+        });
+
+        requestAnimationFrame(animateParticles);
+      }
+
+      animateParticles();
+    };
+
+    drawBackground();
+
+    const handleResize = () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      drawBackground();
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        zIndex: -1,
+      }}
+    />
+  );
+};
 
 export default function Home() {
   const [showSignInPopup, setShowSignInPopup] = useState(false);
@@ -62,6 +177,15 @@ export default function Home() {
     } catch (signInError) {
       console.error('Error signing in with Google:', signInError);
       // Here you can add error handling logic
+    }
+  };
+
+  const handleSectionClick = (e: React.MouseEvent, path: string) => {
+    e.preventDefault();
+    if (user) {
+      router.push(path);
+    } else {
+      setShowSignInPopup(true);
     }
   };
 
@@ -126,31 +250,22 @@ export default function Home() {
     <div className="home-container" style={{ 
       fontFamily: 'Arial, sans-serif', 
       color: '#fff',
-      backgroundImage: 'linear-gradient(to bottom, #000000, #1a1a2e)',
-      minHeight: '100vh'
+      minHeight: '100vh',
+      position: 'relative',
     }}>
-      <header style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div className="logo">
-          {/* Replace with your logo */}
-          <Image src="/logo.png" alt="VegaArt Logo" width={150} height={40} />
-        </div>
-        <nav style={{ display: 'flex', gap: '20px' }}>
-          <Link href="/blog" style={{ color: '#fff', textDecoration: 'none' }}>Blog</Link>
-          <Link href="/community" style={{ color: '#fff', textDecoration: 'none' }}>Community</Link>
-          <Link href="/affiliate" style={{ color: '#fff', textDecoration: 'none' }}>Affiliate</Link>
-          <Link href="/api" style={{ color: '#fff', textDecoration: 'none' }}>API</Link>
-          <Link href="/creators" style={{ color: '#fff', textDecoration: 'none' }}>Creators</Link>
-        </nav>
+      <AnimatedBackground />
+      <header style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', zIndex: 1 }}>
+        <Logo /> {/* Add the Logo component here */}
         <div className="cta-buttons">
           <button onClick={handleSignInClick} style={{ marginRight: '10px', padding: '8px 16px', backgroundColor: 'transparent', color: 'white', border: '1px solid white', borderRadius: '4px', cursor: 'pointer' }}>Sign in</button>
           <button onClick={handleSignInClick} style={{ padding: '8px 16px', backgroundColor: '#ff6b6b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Launch App</button>
         </div>
       </header>
 
-      <main style={{ padding: '40px 20px' }}>
+      <main style={{ padding: '40px 20px', position: 'relative', zIndex: 1 }}>
         <section className="hero" style={{ textAlign: 'center', marginBottom: '60px' }}>
-          <h1 style={{ fontSize: '3.5em', fontWeight: 'bold', marginBottom: '20px' }}>VegaArt AI Art Generator</h1>
-          <p style={{ fontSize: '1.2em', lineHeight: '1.6', maxWidth: '800px', margin: '0 auto 30px' }}>Create AI videos and images with VegaArt's AI Generator</p>
+          <h1 style={{ fontSize: '3.5em', fontWeight: 'bold', marginBottom: '20px' }}>Vega AI Art Generator</h1>
+          <p style={{ fontSize: '1.2em', lineHeight: '1.6', maxWidth: '800px', margin: '0 auto 30px' }}>Create AI videos and images with Vega's AI Generator</p>
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}>
             <input 
               type="text" 
@@ -182,13 +297,75 @@ export default function Home() {
           <h2 style={{ fontSize: '2.5em', fontWeight: 'bold', textAlign: 'center', marginBottom: '30px' }}>Our AI Tools Suite</h2>
           
           <div style={{ display: 'flex', justifyContent: 'center', gap: '40px', marginTop: '40px' }}>
-            <div style={{ width: '300px', padding: '20px', backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '10px' }}>
-              <h3 style={{ fontSize: '1.8em', fontWeight: 'bold', marginBottom: '15px' }}>Text to Video</h3>
-              <p style={{ fontSize: '1em', lineHeight: '1.4' }}>Transform your text into captivating videos with our advanced AI technology. Bring your stories to life with dynamic visuals.</p>
+            <div 
+              onClick={(e) => handleSectionClick(e, '/dashboard/text-to-video')}
+              style={{ 
+                width: '400px',
+                height: '300px',
+                padding: '30px',
+                borderRadius: '15px',
+                position: 'relative',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'transform 0.3s ease-in-out',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundImage: 'url(/textToVideo.png)',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                opacity: 0.3,
+                zIndex: 0
+              }} />
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <h3 style={{ fontSize: '2.2em', fontWeight: 'bold', marginBottom: '20px' }}>Text to Video</h3>
+                <p style={{ fontSize: '1.2em', lineHeight: '1.6' }}>Transform your text into captivating videos.</p>
+              </div>
             </div>
-            <div style={{ width: '300px', padding: '20px', backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '10px' }}>
-              <h3 style={{ fontSize: '1.8em', fontWeight: 'bold', marginBottom: '15px' }}>Text to Image</h3>
-              <p style={{ fontSize: '1em', lineHeight: '1.4' }}>Convert your textual ideas into stunning images. Our AI generates unique visuals based on your descriptions.</p>
+            <div 
+              onClick={(e) => handleSectionClick(e, '/dashboard/text-to-image')}
+              style={{ 
+                width: '400px',
+                height: '300px',
+                padding: '30px',
+                borderRadius: '15px',
+                position: 'relative',
+                overflow: 'hidden',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                transition: 'transform 0.3s ease-in-out',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+            >
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundImage: 'url(/textToImage.png)',
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                opacity: 0.3,
+                zIndex: 0
+              }} />
+              <div style={{ position: 'relative', zIndex: 1 }}>
+                <h3 style={{ fontSize: '2.2em', fontWeight: 'bold', marginBottom: '20px' }}>Text to Image</h3>
+                <p style={{ fontSize: '1.2em', lineHeight: '1.6' }}>Convert your textual ideas into stunning images.</p>
+              </div>
             </div>
           </div>
         </section>
@@ -196,7 +373,7 @@ export default function Home() {
         {/* Other sections (pricing, FAQ, community, testimonials) can be added here following the same style */}
       </main>
 
-      <footer style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '40px 20px', textAlign: 'center' }}>
+      <footer style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '40px 20px', textAlign: 'center', position: 'relative', zIndex: 1 }}>
         <p>© 2024 VegaArt. All rights reserved.</p>
       </footer>
 
