@@ -385,6 +385,7 @@ const Home: React.FC = () => {
                 borderRadius: '30px', 
                 color: 'white',
                 outline: 'none',
+                marginBottom: '5px',
               }} 
             />
             <button onClick={() => handleImageGeneration(prompt)} style={{ 
