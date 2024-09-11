@@ -280,6 +280,7 @@ const Home: React.FC = () => {
 
   const handleImageGeneration = async (prompt: string) => {
     try {
+      setShowSignInPopup(true);
       const response = await fetch('/api/generate-image', {
         method: 'POST',
         headers: {
@@ -499,7 +500,7 @@ const Home: React.FC = () => {
               }} />
               <div style={{ padding: '10px', position: 'relative', zIndex: 1 }}>
                 <h3 style={{ fontSize: '1.8em', fontWeight: 'bold', marginBottom: '10px' }}>Text to Image</h3>
-                <p style={{ fontSize: '1em', lineHeight: '1.6' }}>Convert your textual ideas into stunning images</p>
+                <p style={{ fontSize: '1em', lineHeight: '1.6' }}>Convert your text into stunning images</p>
               </div>
             </div>
           </div>
