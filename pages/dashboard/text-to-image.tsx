@@ -26,14 +26,12 @@ const ImageDisplay = ({ url, prompt, onDownload, onDelete }) => {
         onMouseLeave={() => setIsHovered(false)}
         onClick={() => setShowPopup(true)}
       >
-        <img 
+        <Image 
           src={url} 
           alt={prompt}
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover'
-          }}
+          width={200}
+          height={200}
+          layout="responsive"
         />
         {isHovered && (
           <>
@@ -103,14 +101,12 @@ const ImageDisplay = ({ url, prompt, onDownload, onDelete }) => {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ flex: 3, marginRight: '20px', maxHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <img 
+              <Image 
                 src={url} 
                 alt={prompt}
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  objectFit: 'contain'
-                }}
+                width={500}
+                height={500}
+                layout="responsive"
               />
             </div>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -156,14 +152,12 @@ const CurrentImageDisplay = ({ url, prompt, onDownload, onDelete }) => {
         onMouseLeave={() => setIsHovered(false)}
         onClick={() => setShowPopup(true)}
       >
-        <img 
+        <Image 
           src={url} 
           alt={prompt}
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover'
-          }}
+          width={256}
+          height={256}
+          layout="responsive"
         />
         {isHovered && (
           <>
@@ -233,14 +227,12 @@ const CurrentImageDisplay = ({ url, prompt, onDownload, onDelete }) => {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ flex: 3, marginRight: '20px', maxHeight: '80vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <img 
+              <Image 
                 src={url} 
                 alt={prompt}
-                style={{
-                  maxWidth: '100%',
-                  maxHeight: '100%',
-                  objectFit: 'contain'
-                }}
+                width={500}
+                height={500}
+                layout="responsive"
               />
             </div>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -269,16 +261,21 @@ const CurrentImageDisplay = ({ url, prompt, onDownload, onDelete }) => {
 
 function TextToImage() {
   const [prompt, setPrompt] = useState('');
-  const [generatedImageUrls, setGeneratedImageUrls] = useState([]);
+  const [generatedImages, setGeneratedImages] = useState<{
+    id: string;
+    urls: string[];
+    prompt: string;
+    createdAt: Date;
+    model: string;
+  }[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [user, setUser] = useState(null);
-  const [previousImages, setPreviousImages] = useState([]);
+  const [user, setUser] = useState<{ uid: string } | null>(null);
   const [numImages, setNumImages] = useState(1);
   const [aspectRatio, setAspectRatio] = useState('1:1');
-  const [activeDropdown, setActiveDropdown] = useState(null);
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [selectedModel, setSelectedModel] = useState('flux-schnell');
   const [selectedStyle, setSelectedStyle] = useState('No Style');
-  const dropdownRef = useRef(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const [error, setError] = useState('');
 
@@ -286,7 +283,7 @@ function TextToImage() {
     const unsubscribe = auth.onAuthStateChanged((user) => {
       if (user) {
         setUser(user);
-        fetchPreviousImages(user.uid);
+        fetchUserImages(user.uid);
       } else {
         router.push('/');
       }
@@ -295,89 +292,79 @@ function TextToImage() {
     return () => unsubscribe();
   }, [router]);
 
-  useEffect(() => {
-    console.log("Previous images state updated:", previousImages);
-  }, [previousImages]);
-
-  const fetchPreviousImages = async (userId) => {
-    console.log("Fetching previous images for user:", userId);
+  const fetchUserImages = async (userId: string) => {
     try {
-      console.log("Fetching previous images for user:", userId);
       const imagesRef = collection(db, 'users', userId, 'images');
       const q = query(imagesRef, orderBy('createdAt', 'desc'));
       const querySnapshot = await getDocs(q);
-      console.log("Query snapshot size:", querySnapshot.size);
       const images = [];
       querySnapshot.forEach(doc => {
         const data = doc.data();
-        console.log("Document data:", data);
         images.push({
           id: doc.id,
           prompt: data.prompt,
-          imageUrls: Array.isArray(data.imageUrls) ? data.imageUrls : [data.imageUrl], // Handle both array and single image
-          createdAt: data.createdAt
+          urls: data.imageUrl ? [data.imageUrl] : data.imageUrls || [],
+          createdAt: data.createdAt,
+          model: data.model,
         });
       });
-      console.log("Processed images:", images);
-      setPreviousImages(images);
+      setGeneratedImages(images);
     } catch (error) {
-      console.error("Error fetching previous images:", error);
+      console.error("Error fetching user images:", error);
     }
   };
 
-  const handleGenerate = async (e) => {
-    e.preventDefault();
+  const handleImageGeneration = async (e: React.FormEvent) => {
+    e.preventDefault(); // Prevent the default form submission behavior
     setIsLoading(true);
     setError('');
 
-    try {
-      let finalPrompt = prompt;
-      if (selectedStyle !== 'No Style') {
-        finalPrompt += `, ${selectedStyle}`;
-      }
+    // Check prompt length
+    if (prompt.length > 200) {
+      setError('Prompt is too long. Please keep it under 200 characters.');
+      setIsLoading(false);
+      return; // Exit the function early
+    }
 
+    try {
       const response = await fetch('/api/generate-image', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          prompt: finalPrompt, 
-          userId: user.uid, 
+        body: JSON.stringify({
+          prompt,
+          userId: user?.uid,
           num_outputs: numImages,
           aspect_ratio: aspectRatio,
-          model: selectedModel
+          model: selectedModel,
         }),
       });
 
       const data = await response.json();
-      console.log("API Response:", data);
 
-      if (!response.ok) {
-        throw new Error(`Failed to generate image: ${data.message || response.statusText}`);
-      }
-
-      if (data.output && data.output.length > 0) {
-        setGeneratedImageUrls(data.output);
-        // Update previousImages with the new generation
-        setPreviousImages(prev => [{
+      if (data.success) {
+        const newImage = {
           id: Date.now().toString(),
-          prompt,
-          imageUrls: data.output,
-          createdAt: new Date()
-        }, ...prev]);
+          urls: data.output.imageUrl ? [data.output.imageUrl] : data.output.imageUrls || [],
+          prompt: data.prompt,
+          createdAt: new Date(data.createdAt),
+          model: data.model,
+        };
+
+        setGeneratedImages(prevImages => [newImage, ...prevImages]);
       } else {
-        console.error("Unexpected API response format:", data);
+        setError(data.error || 'Image generation failed');
       }
-    } catch (err) {
-      console.error('Error generating image:', err);
-      setError('An error occurred while generating the image. Please try again.');
+    } catch (error) {
+      console.error('Error generating image:', error);
+      setError('An error occurred while generating the image');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDownload = async (imageUrl) => {
+  const handleDownload = async (imageUrl: string) => {
     if (imageUrl) {
       try {
         const response = await fetch(`/api/download-image?imageUrl=${encodeURIComponent(imageUrl)}`);
@@ -398,37 +385,37 @@ function TextToImage() {
     }
   };
 
-  const handleDownloadAll = async (imageUrls) => {
+  const handleDownloadAll = async (imageUrls: string[]) => {
     for (let i = 0; i < imageUrls.length; i++) {
       await handleDownload(imageUrls[i]);
     }
   };
 
-  const handleDeleteGeneration = async (generationId) => {
+  const handleDeleteGeneration = async (generationId: string) => {
     if (confirm('Are you sure you want to delete this entire generation?')) {
       try {
-        await deleteDoc(doc(db, 'users', user.uid, 'images', generationId));
-        setPreviousImages(prev => prev.filter(gen => gen.id !== generationId));
+        await deleteDoc(doc(db, 'users', user!.uid, 'images', generationId));
+        setGeneratedImages(prev => prev.filter(gen => gen.id !== generationId));
       } catch (error) {
         console.error('Error deleting generation:', error);
       }
     }
   };
 
-  const handleDeleteImage = async (generationId, imageUrl) => {
+  const handleDeleteImage = async (generationId: string, imageUrl: string) => {
     if (confirm('Are you sure you want to delete this image?')) {
       try {
-        const updatedGeneration = previousImages.find(gen => gen.id === generationId);
+        const updatedGeneration = generatedImages.find(gen => gen.id === generationId);
         if (updatedGeneration) {
-          updatedGeneration.imageUrls = updatedGeneration.imageUrls.filter(url => url !== imageUrl);
-          if (updatedGeneration.imageUrls.length === 0) {
-            await deleteDoc(doc(db, 'users', user.uid, 'images', generationId));
-            setPreviousImages(prev => prev.filter(gen => gen.id !== generationId));
+          updatedGeneration.urls = updatedGeneration.urls.filter(url => url !== imageUrl);
+          if (updatedGeneration.urls.length === 0) {
+            await deleteDoc(doc(db, 'users', user!.uid, 'images', generationId));
+            setGeneratedImages(prev => prev.filter(gen => gen.id !== generationId));
           } else {
-            await updateDoc(doc(db, 'users', user.uid, 'images', generationId), {
-              imageUrls: updatedGeneration.imageUrls
+            await updateDoc(doc(db, 'users', user!.uid, 'images', generationId), {
+              imageUrls: updatedGeneration.urls
             });
-            setPreviousImages(prev => prev.map(gen => gen.id === generationId ? updatedGeneration : gen));
+            setGeneratedImages(prev => prev.map(gen => gen.id === generationId ? updatedGeneration : gen));
           }
         }
       } catch (error) {
@@ -438,8 +425,8 @@ function TextToImage() {
   };
 
   useEffect(() => {
-    function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setActiveDropdown(null);
       }
     }
@@ -447,7 +434,7 @@ function TextToImage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const NavLink = ({ href, children }) => {
+  const NavLink = ({ href, children }: { href: string; children: React.ReactNode }) => {
     const isActive = router.pathname === href;
     return (
       <Link href={href} style={{
@@ -483,7 +470,7 @@ function TextToImage() {
         {/* Left side: Previous images section */}
         <div style={{ flex: 3, marginRight: '20px', overflow: 'auto' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {previousImages.map((generation) => (
+            {generatedImages.map((generation) => (
               <div key={generation.id} style={{ position: 'relative' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', backgroundColor: '#2a2a3a', borderRadius: '5px 5px 0 0' }}>
                   <p style={{ fontSize: '14px', fontWeight: '500' }}>{generation.prompt}</p>
@@ -506,7 +493,7 @@ function TextToImage() {
                         minWidth: '120px'
                       }}>
                         <button 
-                          onClick={() => handleDownloadAll(generation.imageUrls)}
+                          onClick={() => handleDownloadAll(generation.urls)}
                           style={{ 
                             display: 'block', 
                             width: '100%', 
@@ -543,8 +530,8 @@ function TextToImage() {
                   </div>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', backgroundColor: '#1a1a2e', padding: '10px', borderRadius: '0 0 5px 5px' }}>
-                  {generation.imageUrls && generation.imageUrls.length > 0 ? (
-                    generation.imageUrls.map((url, index) => (
+                  {generation.urls.length > 0 ? (
+                    generation.urls.map((url, index) => (
                       <ImageDisplay 
                         key={index}
                         url={url}
@@ -649,7 +636,7 @@ function TextToImage() {
         padding: '0 16px'
       }}>
         <div style={{ backgroundColor: '#ffffff', padding: '24px', borderRadius: '10px', boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)' }}>
-          <form onSubmit={handleGenerate} style={{ marginBottom: '1px' }}>
+          <form onSubmit={handleImageGeneration} style={{ marginBottom: '1px' }}>
             <div style={{ marginBottom: '16px' }}>
               <textarea
                 value={prompt}

@@ -16,21 +16,23 @@ interface Video {
 
 function TextToVideo() {
     const [prompt, setPrompt] = useState('');
+    const [promptError, setPromptError] = useState('');
     const [videoUrl, setVideoUrl] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [previousVideos, setPreviousVideos] = useState<Video[]>([]);
     const [currentTaskStatus, setCurrentTaskStatus] = useState('');
     const { user } = useAuth();
-    const [activeDropdown, setActiveDropdown] = useState(null);
-    const dropdownRef = useRef(null);
+    const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
+    const dropdownRef = useRef<HTMLDivElement>(null);
     const [downloadError, setDownloadError] = useState('');
 
     useEffect(() => {
+        console.log('Home component mounted');
         if (user) {
             fetchPreviousVideos();
         }
-    }, [user]);
+    }, [user, fetchPreviousVideos]); // Add fetchPreviousVideos to the dependency array
 
     const fetchPreviousVideos = async () => {
         if (!user) {
@@ -42,9 +44,9 @@ function TextToVideo() {
             const videosRef = collection(db, 'users', user.uid, 'videoTasks');
             const q = query(
                 videosRef,
-                where('status', '==', 'Success'),  // Only fetch videos with 'Success' status
+                where('videoUrl', '!=', null),  // Only fetch videos with a valid videoUrl
                 orderBy('createdAt', 'desc'),
-                limit(15)
+                limit(35)
             );
             const querySnapshot = await getDocs(q);
             const videos = querySnapshot.docs.map(doc => {
@@ -70,8 +72,11 @@ function TextToVideo() {
         }
     };
 
-    const checkProcessingVideos = async (processingVideos) => {
+    const checkProcessingVideos = async (processingVideos: Video[]) => {
         for (const video of processingVideos) {
+            if (!video.taskId) {
+                continue;
+            }
             try {
                 const response = await fetch('/api/check-video-status', {
                     method: 'POST',
@@ -80,7 +85,7 @@ function TextToVideo() {
                     },
                     body: JSON.stringify({ 
                         taskId: video.taskId,
-                        userId: user.uid,
+                        userId: user?.uid,
                         videoId: video.id
                     }),
                 });
@@ -106,10 +111,24 @@ function TextToVideo() {
         }
     };
 
+    const handlePromptChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const newPrompt = e.target.value;
+        setPrompt(newPrompt);
+        if (newPrompt.length > 200) {
+            setPromptError('Prompt is too long. Please keep it under 200 characters.');
+        } else {
+            setPromptError('');
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!user) {
             setError('User not authenticated. Please log in.');
+            return;
+        }
+        if (prompt.length > 200) {
+            setError('Prompt is too long. Please keep it under 200 characters.');
             return;
         }
         setIsLoading(true);
@@ -184,8 +203,8 @@ function TextToVideo() {
     };
 
     useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
                 setActiveDropdown(null);
             }
         };
@@ -222,7 +241,7 @@ function TextToVideo() {
                                             <div ref={dropdownRef} className="absolute right-0 mt-2 w-48 bg-gray-700 rounded-md shadow-lg z-10">
                                                 <div className="py-1">
                                                     <button
-                                                        onClick={() => handleDownload(video.videoUrl)}
+                                                        onClick={() => video.videoUrl && handleDownload(video.videoUrl)}
                                                         className="block w-full text-left px-4 py-2 text-sm text-white hover:bg-gray-600"
                                                     >
                                                         Download
@@ -280,7 +299,7 @@ function TextToVideo() {
                             <textarea
                                 id="prompt"
                                 value={prompt}
-                                onChange={(e) => setPrompt(e.target.value)}
+                                onChange={handlePromptChange}
                                 style={{
                                     width: '100%',
                                     padding: '12px',
@@ -297,20 +316,24 @@ function TextToVideo() {
                                 placeholder="Try something like 'A forest with a river and a waterfall'"
                                 required
                             />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '5px', fontSize: '12px' }}>
+                                <span style={{ color: prompt.length > 200 ? '#ef4444' : '#6b7280' }}>{prompt.length}/200 characters</span>
+                                {promptError && <span style={{ color: '#ef4444' }}>{promptError}</span>}
+                            </div>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'flex-start', width: 'fit-content' }}>
                             <button
                                 type="submit"
                                 style={{
                                     padding: '4px 16px',
-                                    backgroundColor: prompt.trim() === '' || isLoading || currentTaskStatus === 'Processing' ? '#e2e8f0' : '#8b5cf6',
-                                    color: prompt.trim() === '' || isLoading || currentTaskStatus === 'Processing' ? '#a0aec0' : '#ffffff',
+                                    backgroundColor: prompt.trim() === '' || isLoading || currentTaskStatus === 'Processing' || prompt.length > 200 ? '#e2e8f0' : '#8b5cf6',
+                                    color: prompt.trim() === '' || isLoading || currentTaskStatus === 'Processing' || prompt.length > 200 ? '#a0aec0' : '#ffffff',
                                     border: 'none',
                                     borderRadius: '5px',
-                                    cursor: prompt.trim() === '' || isLoading || currentTaskStatus === 'Processing' ? 'not-allowed' : 'pointer',
+                                    cursor: prompt.trim() === '' || isLoading || currentTaskStatus === 'Processing' || prompt.length > 200 ? 'not-allowed' : 'pointer',
                                     transition: 'background-color 0.2s'
                                 }}
-                                disabled={prompt.trim() === '' || isLoading || currentTaskStatus === 'Processing'}
+                                disabled={prompt.trim() === '' || isLoading || currentTaskStatus === 'Processing' || prompt.length > 200}
                             >
                                 {isLoading || currentTaskStatus === 'Processing' ? 'Generating...' : 'Generate Video'}
                             </button>

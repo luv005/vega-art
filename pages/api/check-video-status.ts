@@ -37,12 +37,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const { taskId, userId, videoId } = req.body;
 
     try {
+        console.log("taskId", taskId)
         const minimaxData = await retryQueryVideoGeneration(taskId);
 
         if (!minimaxData) {
             throw new Error('Failed to query video generation status');
         }
-        if (minimaxData.base_resp.status_msg === 'success') {
+        if (minimaxData.status === 'Success') {
             const fileId = minimaxData.file_id;
             const downloadUrl = await fetchVideoResult(fileId);
 

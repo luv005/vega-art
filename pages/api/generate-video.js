@@ -25,16 +25,47 @@ const bucket = getStorage().bucket();
 
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function fetchVideoResult(fileId) {
-  const url = `https://api.minimax.chat/v1/files/retrieve?file_id=${fileId}`;
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${process.env.MINIMAX_API_KEY}`
+const fetchVideoResult = async (taskId) => {
+  try {
+    const response = await fetch(`https://api.minimax.chat/v1/files/retrieve?file_id=${taskId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${process.env.MINIMAX_API_KEY}`,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP error! status: ${response.status}, body: ${errorText}`);
     }
-  });
-  const data = await response.json();
-  return data.file.download_url;
-}
+
+    const responseText = await response.text();
+    console.log('Raw API response:', responseText);
+
+    try {
+      const data = JSON.parse(responseText);
+      console.log("data", data)
+      console.log("download url", data.file.download_url)
+      // Ensure the download_url is an absolute UR
+      
+      return data.file;
+    } catch (parseError) {
+      console.error('Error parsing JSON:', parseError);
+      if (responseText.includes('binding:')) {
+        // Handle the specific error case
+        const errorObj = {
+          error: 'Binding error',
+          message: responseText
+        };
+        return errorObj;
+      }
+      throw new Error(`Invalid JSON response: ${responseText}`);
+    }
+  } catch (error) {
+    console.error('Error fetching video result:', error);
+    throw error;
+  }
+};
 
 export default async function handler(req, res) {
     console.log("API route hit: /api/generate-video"); // Debug log
@@ -97,12 +128,12 @@ export default async function handler(req, res) {
             console.log("Status data:", JSON.stringify(statusData)); // Modify this line
 
             if (statusData && statusData.status) {
-                status = statusData.base_resp.status_msg;
+                status = statusData.status;
                 
                 // Update task status in Firestore only if status is defined
                 await taskRef.update({ status });
 
-                if (status === 'success') {
+                if (status === 'Success') {
                     fileId = statusData.file_id;
                 }
                 retryCount = 0; // Reset retry count on successful status update
@@ -120,10 +151,32 @@ export default async function handler(req, res) {
 
         if (status === 'Success') {
             // Fetch video result
-            const downloadUrl = await fetchVideoResult(fileId);
+            console.log("Fetching video result for fileId:", fileId);
+            const videoResult = await fetchVideoResult(fileId);
+
+            if (videoResult.error) {
+                console.error('Error fetching video:', videoResult.message);
+                await taskRef.update({
+                    status: 'Failed',
+                    error: videoResult.message,
+                    completedAt: new Date()
+                });
+                res.status(200).json({ status: 'Fail', error: 'Error fetching video' });
+                return;
+            }
+
+            // Ensure we have a valid download URL
+            if (!videoResult.download_url || typeof videoResult.download_url !== 'string') {
+                throw new Error('Invalid or missing download URL');
+            }
+
+            console.log("Downloading video from URL:", videoResult.download_url);
 
             // Download the video
-            const videoResponse = await fetch(downloadUrl);
+            const videoResponse = await fetch(videoResult.download_url);
+            if (!videoResponse.ok) {
+                throw new Error(`Failed to download video: ${videoResponse.status} ${videoResponse.statusText}`);
+            }
             const videoBuffer = await videoResponse.buffer();
 
             // Upload to Firebase Storage

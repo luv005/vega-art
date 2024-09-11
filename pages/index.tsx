@@ -1,12 +1,13 @@
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { auth, db } from '../firebaseConfig'
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth'
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore'
+import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore'
 import { useRouter } from 'next/router'
 import { useAuth } from '../components/AuthProvider';
 import React from 'react';
+import styles from '../styles/Home.module.css'
 
 // Add this new component for the logo
 const Logo = () => (
@@ -59,7 +60,7 @@ const AnimatedBackground = () => {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
 
       // Add some subtle, moving particles
-      const particles = [];
+      const particles: Array<{x: number, y: number, radius: number, speed: number}> = [];
       for (let i = 0; i < 50; i++) {
         particles.push({
           x: Math.random() * canvas.width,
@@ -70,19 +71,19 @@ const AnimatedBackground = () => {
       }
 
       function animateParticles() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = gradient;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
+        ctx!.fillStyle = gradient;
+        ctx!.fillRect(0, 0, canvas!.width, canvas!.height);
 
         particles.forEach(particle => {
-          ctx.beginPath();
-          ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
-          ctx.fill();
+          ctx!.beginPath();
+          ctx!.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
+          ctx!.fillStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx!.fill();
 
           particle.y -= particle.speed;
           if (particle.y < 0) {
-            particle.y = canvas.height;
+            particle.y = canvas!.height;
           }
         });
 
@@ -95,8 +96,8 @@ const AnimatedBackground = () => {
     drawBackground();
 
     const handleResize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
+      canvas!.width = window.innerWidth;
+      canvas!.height = window.innerHeight;
       drawBackground();
     };
 
@@ -126,10 +127,20 @@ export default function Home() {
   const [showSignInPopup, setShowSignInPopup] = useState(false);
   const { user } = useAuth();
   const router = useRouter();
+  const [generatedImages, setGeneratedImages] = useState<Array<{
+    id: string;
+    urls: string[];
+    prompt: string;
+    createdAt: Date;
+    model: string;
+  }>>([]);
 
   useEffect(() => {
     console.log('Home component mounted');
-  }, []);
+    if (user) {
+      fetchUserImages();
+    }
+  }, [user, fetchUserImages]);
 
   console.log('Rendering Home component');
 
@@ -240,6 +251,69 @@ export default function Home() {
     </div>
   );
 
+  const fetchUserImages = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const imagesRef = collection(db, 'users', user.uid, 'images');
+      const q = query(imagesRef, orderBy('createdAt', 'desc'), limit(10));
+      const querySnapshot = await getDocs(q);
+      
+      const images = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          urls: data.imageUrl ? [data.imageUrl] : data.imageUrls || [],
+          prompt: data.prompt,
+          createdAt: data.createdAt.toDate(),
+          model: data.model,
+        };
+      });
+
+      setGeneratedImages(images);
+    } catch (error) {
+      console.error('Error fetching user images:', error);
+    }
+  }, [user]);
+
+  const [prompt, setPrompt] = useState('');
+
+  const handleImageGeneration = async (prompt: string) => {
+    try {
+      const response = await fetch('/api/generate-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt,
+          userId: user?.uid, // Use optional chaining
+          num_outputs: 1,
+          aspect_ratio: '1:1',
+          model: 'flux-pro', // Use the model you want
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        const newImage = {
+          id: Date.now().toString(), // temporary id
+          urls: data.output.imageUrl ? [data.output.imageUrl] : data.output.imageUrls || [],
+          prompt: data.prompt,
+          createdAt: new Date(data.createdAt),
+          model: data.model,
+        };
+
+        setGeneratedImages(prevImages => [newImage, ...prevImages]);
+      } else {
+        console.error('Image generation failed:', data.error);
+      }
+    } catch (error) {
+      console.error('Error generating image:', error);
+    }
+  };
+
   useEffect(() => {
     if (user) {
       router.push('/dashboard');
@@ -269,6 +343,8 @@ export default function Home() {
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}>
             <input 
               type="text" 
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
               placeholder="A magical Disney-inspired castle" 
               style={{ 
                 padding: '15px', 
@@ -281,7 +357,7 @@ export default function Home() {
                 outline: 'none'
               }} 
             />
-            <button onClick={handleSignInClick} style={{ 
+            <button onClick={() => handleImageGeneration(prompt)} style={{ 
               padding: '15px 30px', 
               fontSize: '1.2em', 
               backgroundColor: '#ff6b6b', 
@@ -293,80 +369,136 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="ai-tools" style={{ marginBottom: '60px' }}>
-          <h2 style={{ fontSize: '2.5em', fontWeight: 'bold', textAlign: 'center', marginBottom: '30px' }}>Our AI Tools Suite</h2>
+        <section className="ai-tools" style={{ marginBottom: '60px', maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 0 }}>
           
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '40px', marginTop: '40px' }}>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '40px' }}>
             <div 
               onClick={(e) => handleSectionClick(e, '/dashboard/text-to-video')}
               style={{ 
-                width: '400px',
-                height: '300px',
-                padding: '30px',
-                borderRadius: '15px',
-                position: 'relative',
+                width: '580px',
+                height: '400px',
+                backgroundColor: 'rgba(26, 26, 46, 0.1)',
+                borderRadius: '10px',
                 overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
                 cursor: 'pointer',
-                transition: 'transform 0.3s ease-in-out',
+                transition: 'transform 0.3s ease-in-out, background-color 0.3s ease-in-out',
+                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                position: 'relative',
+                zIndex: 0,
               }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.02)';
+                e.currentTarget.style.backgroundColor = 'rgba(26, 26, 46, 0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.backgroundColor = 'rgba(26, 26, 46, 0.1)';
+              }}
             >
-              <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                backgroundImage: 'url(/textToVideo.png)',
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                opacity: 0.3,
-                zIndex: 0
-              }} />
-              <div style={{ position: 'relative', zIndex: 1 }}>
-                <h3 style={{ fontSize: '2.2em', fontWeight: 'bold', marginBottom: '20px' }}>Text to Video</h3>
-                <p style={{ fontSize: '1.2em', lineHeight: '1.6' }}>Transform your text into captivating videos.</p>
+              <video 
+                autoPlay 
+                loop 
+                muted 
+                playsInline
+                style={{
+                  width: '100%',
+                  height: '300px',
+                  objectFit: 'cover',
+                  opacity: 0.7,
+                }}
+              >
+                <source src="https://storage.googleapis.com/vegaart-d14b4.appspot.com/lWjZpigy8hXCbHhHlpL67dblTXJ3/videos/1726042670263.mp4?GoogleAccessId=firebase-adminsdk-m1moh%40vegaart-d14b4.iam.gserviceaccount.com&Expires=16730323200&Signature=fSmjPThN2YwXko6%2BZqm6w9It9gKrsQL8dPJuBEGsbfUulthMiIPZK6yUUaac%2BgMggPQuHDurSyk25jn0A5SONKLy1mz5bHoHVlkfyN%2BKWCV8Gf5%2BBixQQU54nQF0%2FIcSlriHbkXCT8dZdTMY7YgqpER0BAEUMEYTV4em8H4GGVEvYAme19pLITJ0xmDVDe%2F3M5Wn1J4ddyM2lHGFWmYIGVwYz7%2Fw5XGW6r%2F3322h6p391oIue9HO3KgRTeXlnxnGz3Irq%2FOdCyOynuWNNlWNnNnBdzToOIsWQFmKLMJc9SXi8KvLKbyKeeAWjZfPu9Xh2YMGv4ifbvyabfOOblQYRg%3D%3D" 
+                type="video/mp4"
+              />
+              Your browser does not support the video tag.
+            </video>
+              <div style={{ padding: '10px', position: 'relative', zIndex: 1 }}>
+                <h3 style={{ fontSize: '1.8em', fontWeight: 'bold', marginBottom: '10px' }}>Text to Video</h3>
+                <p style={{ fontSize: '1em', lineHeight: '1.6'}}>Transform your text into captivating videos</p>
               </div>
             </div>
             <div 
               onClick={(e) => handleSectionClick(e, '/dashboard/text-to-image')}
               style={{ 
-                width: '400px',
-                height: '300px',
-                padding: '30px',
-                borderRadius: '15px',
-                position: 'relative',
+                width: '580px',
+                height: '400px',
+                backgroundColor: 'rgba(26, 26, 46, 0.1)',
+                borderRadius: '10px',
                 overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
                 cursor: 'pointer',
-                transition: 'transform 0.3s ease-in-out',
+                transition: 'transform 0.3s ease-in-out, background-color 0.3s ease-in-out',
+                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                position: 'relative',
+                zIndex: 0,
               }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.02)';
+                e.currentTarget.style.backgroundColor = 'rgba(26, 26, 46, 0.2)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.backgroundColor = 'rgba(26, 26, 46, 0.1)';
+              }}
             >
               <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
+                height: '300px',
                 backgroundImage: 'url(/textToImage.png)',
                 backgroundSize: 'cover',
                 backgroundPosition: 'center',
-                opacity: 0.3,
-                zIndex: 0
+                opacity: 0.7,
               }} />
-              <div style={{ position: 'relative', zIndex: 1 }}>
-                <h3 style={{ fontSize: '2.2em', fontWeight: 'bold', marginBottom: '20px' }}>Text to Image</h3>
-                <p style={{ fontSize: '1.2em', lineHeight: '1.6' }}>Convert your textual ideas into stunning images.</p>
+              <div style={{ padding: '10px', position: 'relative', zIndex: 1 }}>
+                <h3 style={{ fontSize: '1.8em', fontWeight: 'bold', marginBottom: '10px' }}>Text to Image</h3>
+                <p style={{ fontSize: '1em', lineHeight: '1.6' }}>Convert your textual ideas into stunning images</p>
               </div>
             </div>
+          </div>
+        </section>
+
+        <section className="recent-creations" style={{ marginTop: '100px', marginBottom: '60px', maxWidth: '1200px', margin: '100px auto 60px' }}>
+          <h2 style={{ fontSize: '2.5em', fontWeight: 'bold', textAlign: 'center', marginBottom: '30px' }}>Recent Creations</h2>
+          
+          {/* Videos row */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '20px' }}>
+            {[
+              "https://storage.googleapis.com/vegaart-d14b4.appspot.com/lWjZpigy8hXCbHhHlpL67dblTXJ3/videos/1726044209387.mp4?GoogleAccessId=firebase-adminsdk-m1moh%40vegaart-d14b4.iam.gserviceaccount.com&Expires=16730323200&Signature=NATxrISaB9LDWGaC1Vf7S1WUdfqywvB5ygQt5fusxjMbmGE7DO08PnNENA2nA7NUFonh3Gu%2Bid6qLDiBGwa2%2FPKlsFeSg9%2FAqDBrxbbpubwfgs0UgqaptqBVduaeVf0jZ2SyPfZHdgZFrUctFMSf6FR1mUEHMXOsJEyK%2FSQ9nsgbsWwDJ%2BDcyN%2BM%2Fu%2FMODdoy%2F4P4DMfPFtdy9B44ixz3IFmIkaSyNTzrAFPbw19C85pqAg6ap%2BXb1ucrT7RUqFJfys%2BIeRxuz5wzyT4nDhAxeYEvkIQb8CqRkAgMIY2rgLiUHFWDcYsBT21NR07mgVly4WAl9TmrgGa8HaULLGkUg%3D%3D",
+              "https://storage.googleapis.com/vegaart-d14b4.appspot.com/lWjZpigy8hXCbHhHlpL67dblTXJ3/videos/1726043728105.mp4?GoogleAccessId=firebase-adminsdk-m1moh%40vegaart-d14b4.iam.gserviceaccount.com&Expires=16730323200&Signature=tJrzGp8Qbp3Re4YJxf8jb0e7moh5DiforwxC%2BretgcrkZNZk1sm9EsAfCdT9NRnOv2UTGU6Wmy%2FsVvVOWibOQhZv3CoOjK2d%2Bs92D%2Bb2gNew02PHs75yfyM0D1XAzjuz35xFkTtzBBL7DXwZhFbPK2Y9i8n5ER9pFxof542FIjenikfl9hS8CXJGG3cduVHW84o40cNjIIpgS90uBUE9mJ9F4tZDziVDf%2Fp4t7PAZtaVvdgrVBpX%2FT7nVWWzPUfEMusSKuKV2GvsgilKfT6J27hBuswpdCVZPdqHal9ukWE%2B3VRByqmiMvOjD32e8s7fDFLXu8cXUT5a6En7MkRSNw%3D%3D",
+              "https://storage.googleapis.com/vegaart-d14b4.appspot.com/lWjZpigy8hXCbHhHlpL67dblTXJ3/videos/1726042218476.mp4?GoogleAccessId=firebase-adminsdk-m1moh%40vegaart-d14b4.iam.gserviceaccount.com&Expires=16730323200&Signature=Q8GMccd6ra1jCTe%2BTH0skKIFSmBB741MhRcHG6HzWzISC6mEM3yzjgF7Vg0gEFqy7mLi4heJV5vABg7MKDewfoIKKSNx7ormUtkF2XRC6UsW33eDam4b7%2BN%2BdJM3T4FrKl9IsQLO6XQOn%2B3%2BNyaqwEFP9SMcv%2FeReEqXcLSD2Fv8ZHOtkx%2B%2FrV%2BpRXHX3wUpeAVpTiV%2FyhXG%2FKXO5SH7w17qGsA0HNrLT3RGXtqspyYuiMhbTQll4ca%2B1O8mQYq9fZeVtH7ufBKbWZ4Dh7jnfL2zKJPyeEt7kcV%2BeFfJAjEBaYkkWZretr%2FxYRMd0bdH%2FsgSeydy5kffTGS5ye7Cvg%3D%3D",
+              "https://storage.googleapis.com/vegaart-d14b4.appspot.com/users/lWjZpigy8hXCbHhHlpL67dblTXJ3/videos/psJYOCtwoleYdvoM84WR.mp4?GoogleAccessId=firebase-adminsdk-m1moh%40vegaart-d14b4.iam.gserviceaccount.com&Expires=16730323200&Signature=QIAcwL8ze4BDfoPDP%2BpZd1UgLC%2BLBeJ5pLWCPY01m%2FIbYoH4qJbGpbUQVTSratU%2FHs6oZulrcHFx0A6MWaeeTrAMueBZ%2B5HmGjlwYxfsYjrTzPtUyVqDNDsU2cYmHOJ9ktaLozL7FX%2BzHxvRriKQARKeiY5h0BTXqVAqvk431DU%2FRyRNkhLkXLE5VE3dS3Qv1e%2B97mUCIPK9fPYu%2FuG0dY6%2F6UGFtrRBOSyQpafMy42ImEcH1acIGgjINyznsqZ97l6xcOgseny%2FYLLaHvhFl85PsErgczJ0cJXQ8iPgAI0gct3mAMAIkmNQEesyXVxsgSBFoUR%2BwskIoqbvTARoSg%3D%3D"
+            ].map((videoUrl, index) => (
+              <div key={`video-${index}`} style={{ width: '280px', height: '280px', overflow: 'hidden', borderRadius: '10px' }}>
+                <video 
+                  autoPlay 
+                  loop 
+                  muted 
+                  playsInline
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                >
+                  <source src={videoUrl} type="video/mp4" />
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+            ))}
+          </div>
+
+          {/* Images row */}
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px' }}>
+            {[
+              '/images/image1.png',
+              '/images/image2.png',
+              '/images/image3.png',
+              '/images/image4.png'
+            ].map((imagePath, index) => (
+              <div key={`image-${index}`} style={{ width: '280px', height: '280px', overflow: 'hidden', borderRadius: '10px' }}>
+                <Image 
+                  src={imagePath}
+                  alt={`Generated image ${index + 1}`}
+                  width={280}
+                  height={280}
+                  objectFit="cover"
+                />
+              </div>
+            ))}
           </div>
         </section>
 
