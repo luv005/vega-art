@@ -2,14 +2,20 @@ import React from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 
-const Sidebar = () => {
+interface NavLinkProps {
+  href: string;
+  children: React.ReactNode;
+  icon?: React.ReactNode;
+}
+
+const Sidebar: React.FC = () => {
     const router = useRouter();
 
-    const NavLink = ({ href, children, icon }) => {
+    const NavLink: React.FC<NavLinkProps> = ({ href, children, icon }) => {
         const isActive = router.pathname === href;
         return (
             <Link href={href} className={`flex items-center py-2 px-4 ${isActive ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-700 hover:text-white'}`}>
-                <span className="mr-2">{icon}</span>
+                {icon}
                 {children}
             </Link>
         );

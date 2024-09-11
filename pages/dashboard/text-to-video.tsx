@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../components/AuthProvider';
 import withAuth from '../../components/withAuth';
 import { db } from '../../firebase';
@@ -27,14 +27,7 @@ function TextToVideo() {
     const dropdownRef = useRef<HTMLDivElement>(null);
     const [downloadError, setDownloadError] = useState('');
 
-    useEffect(() => {
-        console.log('Home component mounted');
-        if (user) {
-            fetchPreviousVideos();
-        }
-    }, [user, fetchPreviousVideos]); // Add fetchPreviousVideos to the dependency array
-
-    const fetchPreviousVideos = async () => {
+    const fetchPreviousVideos = useCallback(async () => {
         if (!user) {
             console.log("No user found, skipping fetch");
             return;
@@ -70,7 +63,14 @@ function TextToVideo() {
             console.error('Error fetching previous videos:', error);
             setError('Failed to fetch previous videos. Please try refreshing the page.');
         }
-    };
+    }, [user]);
+
+    useEffect(() => {
+        console.log('Home component mounted');
+        if (user) {
+            fetchPreviousVideos();
+        }
+    }, [user, fetchPreviousVideos]);
 
     const checkProcessingVideos = async (processingVideos: Video[]) => {
         for (const video of processingVideos) {

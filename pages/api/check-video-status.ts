@@ -1,33 +1,9 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { db, storage } from '../../firebaseAdmin';
-import fetch from 'node-fetch';
 import { queryVideoGeneration } from '../../utils/minimax';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY = 1000; // 1 second
-
-async function retryQueryVideoGeneration(taskId: string, retries = MAX_RETRIES): Promise<any> {
-    try {
-        return await queryVideoGeneration(taskId);
-    } catch (error) {
-        if (retries > 0 && error instanceof Error && error.message.includes('ENOTFOUND')) {
-            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
-            return retryQueryVideoGeneration(taskId, retries - 1);
-        }
-        throw error;
-    }
-}
-
-async function fetchVideoResult(fileId: string) {
-    const url = `https://api.minimax.chat/v1/files/retrieve?file_id=${fileId}`;
-    const response = await fetch(url, {
-        headers: {
-            'Authorization': `Bearer ${process.env.MINIMAX_API_KEY}`
-        }
-    });
-    const data = await response.json();
-    return data.file.download_url;
-}
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
     if (req.method !== 'POST') {
@@ -47,8 +23,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             const fileId = minimaxData.file_id;
             const downloadUrl = await fetchVideoResult(fileId);
 
-            const videoResponse = await fetch(downloadUrl);
-            const videoBuffer = await videoResponse.buffer();
+            const response = await fetch(downloadUrl);
+            const videoBuffer = Buffer.from(await response.arrayBuffer());
 
             const file = storage.bucket().file(`users/${userId}/videos/${videoId}.mp4`);
             await file.save(videoBuffer, {
@@ -76,4 +52,27 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
         return res.status(500).json({ message: 'Internal server error', error: error instanceof Error ? error.message : 'Unknown error' });
     }
+}
+
+async function retryQueryVideoGeneration(taskId: string, retries = MAX_RETRIES): Promise<any> {
+    try {
+        return await queryVideoGeneration(taskId);
+    } catch (error) {
+        if (retries > 0 && error instanceof Error && error.message.includes('ENOTFOUND')) {
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+            return retryQueryVideoGeneration(taskId, retries - 1);
+        }
+        throw error;
+    }
+}
+
+async function fetchVideoResult(fileId: string) {
+    const url = `https://api.minimax.chat/v1/files/retrieve?file_id=${fileId}`;
+    const response = await fetch(url, {
+        headers: {
+            'Authorization': `Bearer ${process.env.MINIMAX_API_KEY}`
+        }
+    });
+    const data = await response.json();
+    return data.file.download_url;
 }

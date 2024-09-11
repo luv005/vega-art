@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
-import { auth, db } from '../firebaseConfig'
+import { auth, db } from '../firebase'
 import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth'
 import { doc, setDoc, getDoc, serverTimestamp, collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore'
 import { useRouter } from 'next/router'
@@ -123,7 +123,7 @@ const AnimatedBackground = () => {
   );
 };
 
-export default function Home() {
+const Home: React.FC = () => {
   const [showSignInPopup, setShowSignInPopup] = useState(false);
   const { user } = useAuth();
   const router = useRouter();
@@ -134,6 +134,31 @@ export default function Home() {
     createdAt: Date;
     model: string;
   }>>([]);
+
+  const fetchUserImages = useCallback(async () => {
+    if (!user) return;
+
+    try {
+      const imagesRef = collection(db, 'users', user.uid, 'images');
+      const q = query(imagesRef, orderBy('createdAt', 'desc'), limit(10));
+      const querySnapshot = await getDocs(q);
+      
+      const images = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          urls: data.imageUrl ? [data.imageUrl] : data.imageUrls || [],
+          prompt: data.prompt,
+          createdAt: data.createdAt.toDate(),
+          model: data.model,
+        };
+      });
+
+      setGeneratedImages(images);
+    } catch (error) {
+      console.error('Error fetching user images:', error);
+    }
+  }, [user]);
 
   useEffect(() => {
     console.log('Home component mounted');
@@ -251,31 +276,6 @@ export default function Home() {
     </div>
   );
 
-  const fetchUserImages = useCallback(async () => {
-    if (!user) return;
-
-    try {
-      const imagesRef = collection(db, 'users', user.uid, 'images');
-      const q = query(imagesRef, orderBy('createdAt', 'desc'), limit(10));
-      const querySnapshot = await getDocs(q);
-      
-      const images = querySnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          urls: data.imageUrl ? [data.imageUrl] : data.imageUrls || [],
-          prompt: data.prompt,
-          createdAt: data.createdAt.toDate(),
-          model: data.model,
-        };
-      });
-
-      setGeneratedImages(images);
-    } catch (error) {
-      console.error('Error fetching user images:', error);
-    }
-  }, [user]);
-
   const [prompt, setPrompt] = useState('');
 
   const handleImageGeneration = async (prompt: string) => {
@@ -287,10 +287,10 @@ export default function Home() {
         },
         body: JSON.stringify({
           prompt,
-          userId: user?.uid, // Use optional chaining
+          userId: user?.uid,
           num_outputs: 1,
           aspect_ratio: '1:1',
-          model: 'flux-pro', // Use the model you want
+          model: 'flux-pro',
         }),
       });
 
@@ -298,7 +298,7 @@ export default function Home() {
 
       if (data.success) {
         const newImage = {
-          id: Date.now().toString(), // temporary id
+          id: Date.now().toString(),
           urls: data.output.imageUrl ? [data.output.imageUrl] : data.output.imageUrls || [],
           prompt: data.prompt,
           createdAt: new Date(data.createdAt),
@@ -328,19 +328,48 @@ export default function Home() {
       position: 'relative',
     }}>
       <AnimatedBackground />
-      <header style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', zIndex: 1 }}>
-        <Logo /> {/* Add the Logo component here */}
-        <div className="cta-buttons">
-          <button onClick={handleSignInClick} style={{ marginRight: '10px', padding: '8px 16px', backgroundColor: 'transparent', color: 'white', border: '1px solid white', borderRadius: '4px', cursor: 'pointer' }}>Sign in</button>
-          <button onClick={handleSignInClick} style={{ padding: '8px 16px', backgroundColor: '#ff6b6b', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>Launch App</button>
+      <header style={{ 
+        padding: '20px', 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        position: 'relative', 
+        zIndex: 1,
+        flexWrap: 'wrap',
+      }}>
+        <Logo />
+        <div className="cta-buttons" style={{ marginTop: '10px' }}>
+          <button onClick={handleSignInClick} style={{ 
+            padding: '8px 16px', 
+            backgroundColor: '#ff6b6b', 
+            color: 'white', 
+            border: 'none', 
+            borderRadius: '4px', 
+            cursor: 'pointer' 
+          }}>Launch App</button>
         </div>
       </header>
 
       <main style={{ padding: '40px 20px', position: 'relative', zIndex: 1 }}>
         <section className="hero" style={{ textAlign: 'center', marginBottom: '60px' }}>
-          <h1 style={{ fontSize: '3.5em', fontWeight: 'bold', marginBottom: '20px' }}>Vega AI Art Generator</h1>
-          <p style={{ fontSize: '1.2em', lineHeight: '1.6', maxWidth: '800px', margin: '0 auto 30px' }}>Create AI videos and images with Vega's AI Generator</p>
-          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', marginBottom: '20px' }}>
+          <h1 style={{ 
+            fontSize: 'clamp(2em, 5vw, 3.5em)', 
+            fontWeight: 'bold', 
+            marginBottom: '20px' 
+          }}>Vega AI Art Generator</h1>
+          <p style={{ 
+            fontSize: 'clamp(1em, 3vw, 1.2em)', 
+            lineHeight: '1.6', 
+            maxWidth: '800px', 
+            margin: '0 auto 30px' 
+          }}>Create AI videos and images with Vega&apos;s Generator</p>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            marginBottom: '20px',
+            flexWrap: 'wrap',
+          }}>
             <input 
               type="text" 
               value={prompt}
@@ -348,34 +377,50 @@ export default function Home() {
               placeholder="A magical Disney-inspired castle" 
               style={{ 
                 padding: '15px', 
-                fontSize: '1.2em', 
-                width: '400px', 
+                fontSize: 'clamp(0.8em, 2vw, 1.2em)', 
+                width: '100%', 
+                maxWidth: '500px', 
                 backgroundColor: 'rgba(255, 255, 255, 0.1)', 
                 border: '1px solid rgba(255, 255, 255, 0.3)', 
-                borderRadius: '30px 0 0 30px', 
+                borderRadius: '30px', 
                 color: 'white',
-                outline: 'none'
+                outline: 'none',
               }} 
             />
             <button onClick={() => handleImageGeneration(prompt)} style={{ 
               padding: '15px 30px', 
-              fontSize: '1.2em', 
+              fontSize: 'clamp(0.8em, 2vw, 1.2em)', 
               backgroundColor: '#ff6b6b', 
               color: 'white', 
               border: 'none', 
-              borderRadius: '0 30px 30px 0',
-              cursor: 'pointer'
+              borderRadius: '30px',
+              cursor: 'pointer',
+              width: '100%',
+              maxWidth: '200px',
             }}>Create</button>
           </div>
         </section>
 
-        <section className="ai-tools" style={{ marginBottom: '60px', maxWidth: '1200px', margin: '0 auto', position: 'relative', zIndex: 0 }}>
-          
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginTop: '40px' }}>
+        <section className="ai-tools" style={{ 
+          marginBottom: '60px', 
+          maxWidth: '1200px', 
+          margin: '0 auto', 
+          position: 'relative', 
+          zIndex: 0 
+        }}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            gap: '20px', 
+            marginTop: '40px',
+            flexWrap: 'wrap',
+          }}>
+            {/* Text to Video Card */}
             <div 
               onClick={(e) => handleSectionClick(e, '/dashboard/text-to-video')}
               style={{ 
-                width: '580px',
+                width: '100%',
+                maxWidth: '580px',
                 height: '400px',
                 backgroundColor: 'rgba(26, 26, 46, 0.1)',
                 borderRadius: '10px',
@@ -385,6 +430,7 @@ export default function Home() {
                 boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
                 position: 'relative',
                 zIndex: 0,
+                marginBottom: '20px',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'scale(1.02)';
@@ -417,10 +463,12 @@ export default function Home() {
                 <p style={{ fontSize: '1em', lineHeight: '1.6'}}>Transform your text into captivating videos</p>
               </div>
             </div>
+            {/* Text to Image Card */}
             <div 
               onClick={(e) => handleSectionClick(e, '/dashboard/text-to-image')}
               style={{ 
-                width: '580px',
+                width: '100%',
+                maxWidth: '580px',
                 height: '400px',
                 backgroundColor: 'rgba(26, 26, 46, 0.1)',
                 borderRadius: '10px',
@@ -430,6 +478,7 @@ export default function Home() {
                 boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
                 position: 'relative',
                 zIndex: 0,
+                marginBottom: '20px',
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.transform = 'scale(1.02)';
@@ -455,18 +504,34 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="recent-creations" style={{ marginTop: '100px', marginBottom: '60px', maxWidth: '1200px', margin: '100px auto 60px' }}>
-          <h2 style={{ fontSize: '2.5em', fontWeight: 'bold', textAlign: 'center', marginBottom: '30px' }}>Recent Creations</h2>
+        <section className="recent-creations" style={{ 
+          marginTop: '100px', 
+          marginBottom: '60px', 
+          maxWidth: '1200px', 
+          margin: '100px auto 60px' 
+        }}>
+          <h2 style={{ 
+            fontSize: 'clamp(1.5em, 4vw, 2.5em)', 
+            fontWeight: 'bold', 
+            textAlign: 'center', 
+            marginBottom: '30px' 
+          }}>Recent Creations</h2>
           
           {/* Videos row */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '20px' }}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            gap: '20px', 
+            marginBottom: '20px',
+            flexWrap: 'wrap',
+          }}>
             {[
               "https://storage.googleapis.com/vegaart-d14b4.appspot.com/lWjZpigy8hXCbHhHlpL67dblTXJ3/videos/1726044209387.mp4?GoogleAccessId=firebase-adminsdk-m1moh%40vegaart-d14b4.iam.gserviceaccount.com&Expires=16730323200&Signature=NATxrISaB9LDWGaC1Vf7S1WUdfqywvB5ygQt5fusxjMbmGE7DO08PnNENA2nA7NUFonh3Gu%2Bid6qLDiBGwa2%2FPKlsFeSg9%2FAqDBrxbbpubwfgs0UgqaptqBVduaeVf0jZ2SyPfZHdgZFrUctFMSf6FR1mUEHMXOsJEyK%2FSQ9nsgbsWwDJ%2BDcyN%2BM%2Fu%2FMODdoy%2F4P4DMfPFtdy9B44ixz3IFmIkaSyNTzrAFPbw19C85pqAg6ap%2BXb1ucrT7RUqFJfys%2BIeRxuz5wzyT4nDhAxeYEvkIQb8CqRkAgMIY2rgLiUHFWDcYsBT21NR07mgVly4WAl9TmrgGa8HaULLGkUg%3D%3D",
               "https://storage.googleapis.com/vegaart-d14b4.appspot.com/lWjZpigy8hXCbHhHlpL67dblTXJ3/videos/1726043728105.mp4?GoogleAccessId=firebase-adminsdk-m1moh%40vegaart-d14b4.iam.gserviceaccount.com&Expires=16730323200&Signature=tJrzGp8Qbp3Re4YJxf8jb0e7moh5DiforwxC%2BretgcrkZNZk1sm9EsAfCdT9NRnOv2UTGU6Wmy%2FsVvVOWibOQhZv3CoOjK2d%2Bs92D%2Bb2gNew02PHs75yfyM0D1XAzjuz35xFkTtzBBL7DXwZhFbPK2Y9i8n5ER9pFxof542FIjenikfl9hS8CXJGG3cduVHW84o40cNjIIpgS90uBUE9mJ9F4tZDziVDf%2Fp4t7PAZtaVvdgrVBpX%2FT7nVWWzPUfEMusSKuKV2GvsgilKfT6J27hBuswpdCVZPdqHal9ukWE%2B3VRByqmiMvOjD32e8s7fDFLXu8cXUT5a6En7MkRSNw%3D%3D",
               "https://storage.googleapis.com/vegaart-d14b4.appspot.com/lWjZpigy8hXCbHhHlpL67dblTXJ3/videos/1726042218476.mp4?GoogleAccessId=firebase-adminsdk-m1moh%40vegaart-d14b4.iam.gserviceaccount.com&Expires=16730323200&Signature=Q8GMccd6ra1jCTe%2BTH0skKIFSmBB741MhRcHG6HzWzISC6mEM3yzjgF7Vg0gEFqy7mLi4heJV5vABg7MKDewfoIKKSNx7ormUtkF2XRC6UsW33eDam4b7%2BN%2BdJM3T4FrKl9IsQLO6XQOn%2B3%2BNyaqwEFP9SMcv%2FeReEqXcLSD2Fv8ZHOtkx%2B%2FrV%2BpRXHX3wUpeAVpTiV%2FyhXG%2FKXO5SH7w17qGsA0HNrLT3RGXtqspyYuiMhbTQll4ca%2B1O8mQYq9fZeVtH7ufBKbWZ4Dh7jnfL2zKJPyeEt7kcV%2BeFfJAjEBaYkkWZretr%2FxYRMd0bdH%2FsgSeydy5kffTGS5ye7Cvg%3D%3D",
               "https://storage.googleapis.com/vegaart-d14b4.appspot.com/users/lWjZpigy8hXCbHhHlpL67dblTXJ3/videos/psJYOCtwoleYdvoM84WR.mp4?GoogleAccessId=firebase-adminsdk-m1moh%40vegaart-d14b4.iam.gserviceaccount.com&Expires=16730323200&Signature=QIAcwL8ze4BDfoPDP%2BpZd1UgLC%2BLBeJ5pLWCPY01m%2FIbYoH4qJbGpbUQVTSratU%2FHs6oZulrcHFx0A6MWaeeTrAMueBZ%2B5HmGjlwYxfsYjrTzPtUyVqDNDsU2cYmHOJ9ktaLozL7FX%2BzHxvRriKQARKeiY5h0BTXqVAqvk431DU%2FRyRNkhLkXLE5VE3dS3Qv1e%2B97mUCIPK9fPYu%2FuG0dY6%2F6UGFtrRBOSyQpafMy42ImEcH1acIGgjINyznsqZ97l6xcOgseny%2FYLLaHvhFl85PsErgczJ0cJXQ8iPgAI0gct3mAMAIkmNQEesyXVxsgSBFoUR%2BwskIoqbvTARoSg%3D%3D"
             ].map((videoUrl, index) => (
-              <div key={`video-${index}`} style={{ width: '280px', height: '280px', overflow: 'hidden', borderRadius: '10px' }}>
+              <div key={`video-${index}`} style={{ width: '100%', maxWidth: '280px', height: '280px', overflow: 'hidden', borderRadius: '10px' }}>
                 <video 
                   autoPlay 
                   loop 
@@ -482,14 +547,19 @@ export default function Home() {
           </div>
 
           {/* Images row */}
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '20px' }}>
+          <div style={{ 
+            display: 'flex', 
+            justifyContent: 'center', 
+            gap: '20px',
+            flexWrap: 'wrap',
+          }}>
             {[
               '/images/image1.png',
               '/images/image2.png',
               '/images/image3.png',
               '/images/image4.png'
             ].map((imagePath, index) => (
-              <div key={`image-${index}`} style={{ width: '280px', height: '280px', overflow: 'hidden', borderRadius: '10px' }}>
+              <div key={`image-${index}`} style={{ width: '100%', maxWidth: '280px', height: '280px', overflow: 'hidden', borderRadius: '10px' }}>
                 <Image 
                   src={imagePath}
                   alt={`Generated image ${index + 1}`}
@@ -505,11 +575,19 @@ export default function Home() {
         {/* Other sections (pricing, FAQ, community, testimonials) can be added here following the same style */}
       </main>
 
-      <footer style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', padding: '40px 20px', textAlign: 'center', position: 'relative', zIndex: 1 }}>
+      <footer style={{ 
+        backgroundColor: 'rgba(255, 255, 255, 0.1)', 
+        padding: '40px 20px', 
+        textAlign: 'center', 
+        position: 'relative', 
+        zIndex: 1 
+      }}>
         <p>© 2024 VegaArt. All rights reserved.</p>
       </footer>
 
       {showSignInPopup && <SignInPopup />}
     </div>
-  )
-}
+  );
+};
+
+export default Home;

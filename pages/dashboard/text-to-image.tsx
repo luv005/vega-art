@@ -1,3 +1,8 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-unused-vars */
+/* eslint-disable react-hooks/exhaustive-deps */
+/* eslint-disable @next/next/no-img-element */
+
 import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import Image from 'next/image'
@@ -7,7 +12,14 @@ import { collection, query, where, getDocs, orderBy, doc, deleteDoc, updateDoc }
 import withAuth from '../../components/withAuth'
 import Sidebar from '../../components/Sidebar'
 
-const ImageDisplay = ({ url, prompt, onDownload, onDelete }) => {
+interface ImageDisplayProps {
+  url: string;
+  prompt: string;
+  onDownload: (imageUrl: string) => void;
+  onDelete: () => void;
+}
+
+const ImageDisplay: React.FC<ImageDisplayProps> = ({ url, prompt, onDownload, onDelete }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
 
@@ -133,7 +145,14 @@ const ImageDisplay = ({ url, prompt, onDownload, onDelete }) => {
   );
 };
 
-const CurrentImageDisplay = ({ url, prompt, onDownload, onDelete }) => {
+interface CurrentImageDisplayProps {
+  url: string;
+  prompt: string;
+  onDownload: (url: string) => void;
+  onDelete: () => void;
+}
+
+const CurrentImageDisplay: React.FC<CurrentImageDisplayProps> = ({ url, prompt, onDownload, onDelete }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
 
@@ -259,7 +278,7 @@ const CurrentImageDisplay = ({ url, prompt, onDownload, onDelete }) => {
   );
 };
 
-function TextToImage() {
+const TextToImage: React.FC = () => {
   const [prompt, setPrompt] = useState('');
   const [generatedImages, setGeneratedImages] = useState<{
     id: string;
@@ -297,14 +316,20 @@ function TextToImage() {
       const imagesRef = collection(db, 'users', userId, 'images');
       const q = query(imagesRef, orderBy('createdAt', 'desc'));
       const querySnapshot = await getDocs(q);
-      const images = [];
+      const images: Array<{
+        id: string;
+        prompt: string;
+        urls: string[];
+        createdAt: Date;
+        model: string;
+      }> = [];
       querySnapshot.forEach(doc => {
         const data = doc.data();
         images.push({
           id: doc.id,
           prompt: data.prompt,
           urls: data.imageUrl ? [data.imageUrl] : data.imageUrls || [],
-          createdAt: data.createdAt,
+          createdAt: data.createdAt.toDate(),
           model: data.model,
         });
       });
